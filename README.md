@@ -1,152 +1,101 @@
 # Video Transcriber
 
-Transcribe MP4 videos and audio files into .srt subtitles and .txt transcripts. Works offline on CPU. Supports Cantonese and English with auto-detection.
+Turn any video into subtitles. Works offline, no internet needed after setup.
 
-## Prerequisites
+---
 
-- **Python 3.10+**
-- **ffmpeg** — required for audio extraction from video
+## Quick Start (for non-technical users)
 
-### Install ffmpeg
+You need two things:
 
-```bash
-# Linux (Ubuntu/Debian)
-sudo apt install ffmpeg
+### 1. Install ffmpeg (one time)
 
-# macOS
-brew install ffmpeg
+Open **Command Prompt** and paste:
 
-# Windows
+```
 winget install ffmpeg
 ```
 
-## Setup
+Restart Command Prompt after installing.
+
+### 2. Run the transcriber
+
+Double-click **transcriber.exe**. A window opens:
+
+1. Click **Browse** and pick your video file
+2. Choose your language (use **Cantonese/Chinese (zh)** for Cantonese)
+3. Click **Transcribe**
+4. Wait for it to finish — subtitle files appear next to your video
+
+That's it! You get a `.srt` file (subtitles) and a `.txt` file (plain text) in the same folder as your video.
+
+> First run takes a bit longer because it downloads the speech model (~150MB). After that it works fully offline.
+
+---
+
+## For Cantonese Videos
+
+- Set language to **Cantonese / Chinese (zh)**
+- If the video is about a specific topic, pick a **Domain** for better accuracy:
+
+| Domain | Good for |
+|--------|----------|
+| I-Ching / Metaphysics | 易經, 風水, 八字 lectures |
+| Philosophy | 儒釋道, 新儒家 discussions |
+| Geopolitics | 時事分析, international affairs |
+| Finance | 財經, stocks, markets |
+| Crypto | Bitcoin, blockchain |
+| Technology / AI | Tech and AI topics |
+
+---
+
+## Troubleshooting
+
+**"ffmpeg not found"** — Make sure you installed ffmpeg (step 1 above) and restarted Command Prompt.
+
+**It's very slow** — Change the Model to **tiny** for faster (but less accurate) results. The default **base** model is a good balance.
+
+**Wrong language** — Pick the correct language manually instead of leaving it on Auto-detect.
+
+**Subtitles look garbled** — The tool retries automatically, but if it still looks wrong, try setting the language explicitly.
+
+---
+
+## Developer Setup
+
+If you want to run from source instead of the .exe:
 
 ```bash
-# Clone or copy this folder, then:
-cd transcriber
+# Install Python 3.10+ and ffmpeg, then:
 pip install -r requirements.txt
-```
 
-The first time you run a transcription, the Whisper model will be downloaded automatically (~150MB for `base`).
+# GUI
+python gui.py
 
-## Usage
-
-### Basic — transcribe a local video
-
-```bash
+# Command line
 python transcribe.py video.mp4
+python transcribe.py video.mp4 -l zh --domain iching
+python transcribe.py "https://youtube.com/watch?v=..."
 ```
 
-This produces `video.srt` and `video.txt` in the same directory.
-
-### Cantonese content
-
-For Cantonese, force the language to `zh` (NOT `yue` — this produces much better results):
-
-```bash
-python transcribe.py cantonese_video.mp4 -l zh
-```
-
-With domain-specific vocabulary hints (improves accuracy for specialized topics):
-
-```bash
-python transcribe.py iching_lecture.mp4 -l zh --domain iching
-python transcribe.py news_clip.mp4 -l zh --domain geopolitics
-python transcribe.py finance_talk.mp4 -l zh --domain finance
-```
-
-Available domains: `ai`, `crypto`, `finance`, `geopolitics`, `iching`, `iching_philosophy`, `metaphysics`, `philosophy`, `politics`, `technology`
-
-### YouTube and other URLs
-
-```bash
-python transcribe.py "https://youtube.com/watch?v=VIDEO_ID"
-python transcribe.py "https://twitter.com/user/status/123456" -o subtitles/
-```
-
-### Options
+### Command Line Options
 
 ```
 python transcribe.py INPUT [options]
 
-Options:
-  -o, --output DIR         Output directory
-  -m, --model SIZE         tiny|base|small|medium|large-v3 (default: base)
-  -l, --language LANG      en, zh (Cantonese), etc. Default: auto-detect
-  --domain DOMAIN          Cantonese vocabulary hints (iching, finance, etc.)
-  --format FORMAT          srt|txt|both (default: both)
-  --max-duration SECS      Only transcribe first N seconds (for testing)
-  --keep-audio             Keep downloaded audio files
-  -v, --verbose            Show detailed logs
+  -o DIR              Output directory
+  -m MODEL            tiny|base|small|medium|large-v3 (default: base)
+  -l LANG             en, zh (Cantonese), ja, ko, fr, es, de...
+  --domain DOMAIN     iching, geopolitics, finance, philosophy, etc.
+  --format FORMAT     srt|txt|both (default: both)
+  -v                  Verbose output
 ```
 
-## Model Size Guide
-
-| Model | Size | Speed on CPU | Accuracy | Recommended for |
-|-------|------|-------------|----------|-----------------|
-| tiny | ~75MB | ~1x real-time | Fair | Quick test runs |
-| **base** | ~150MB | **~2x real-time** | **Good** | **Default — best speed/accuracy balance** |
-| small | ~500MB | ~4x real-time | Better | When base isn't accurate enough |
-| medium | ~1.5GB | ~8x real-time | Very good | When you need high accuracy and can wait |
-| large-v3 | ~3GB | ~15x real-time | Best | Not recommended on CPU (very slow) |
-
-Speed = how many times longer than the audio duration. E.g., "2x real-time" means a 10-minute video takes ~20 minutes to transcribe.
-
-## Cantonese Tips
-
-1. **Always use `-l zh`** — Whisper's `yue` (Cantonese) token causes decoder collapse. Forcing `zh` (Chinese) produces coherent Traditional Chinese output.
-
-2. **Use `--domain`** for specialized content — this provides vocabulary hints that prevent common misrecognitions (e.g., 易經 being heard as 液晶).
-
-3. **`base` model works well** — per testing, `base` + forced `zh` achieves good Cantonese quality without the compute overhead of larger models.
-
-## GUI Mode
-
-Double-click or run the GUI version — no command line needed:
-
-```bash
-python gui.py
-```
-
-A window opens where you can:
-1. **Browse** for a video/audio file
-2. **Pick** language (Auto-detect, Cantonese/zh, English, etc.)
-3. **Pick** domain for Cantonese vocab hints (optional)
-4. **Click Transcribe** and watch progress
-5. Get .srt + .txt files in the same folder as your video
-
-## Building a Standalone .exe (for non-technical users)
-
-If your friend doesn't have Python installed, you can build .exe files they can run directly.
-
-### On your machine (one-time build):
+### Building the .exe
 
 ```bash
 pip install pyinstaller
 python build_exe.py
 ```
 
-This produces:
-- `dist/transcriber.exe` — **GUI version** (double-click to open, recommended for non-technical users)
-- `dist/transcribe.exe` — CLI version
-
-### What your friend needs:
-
-1. **`transcriber.exe`** — copy it to their computer, double-click to open
-2. **ffmpeg** — they need to install this once: open Command Prompt and run `winget install ffmpeg`
-
-The first run downloads the Whisper model (~150MB for base) automatically. After that, it works fully offline.
-
-## Troubleshooting
-
-**"ffmpeg not found"** — Install ffmpeg (see Prerequisites above).
-
-**YouTube download fails** — Update yt-dlp: `pip install -U yt-dlp`
-
-**Transcription is very slow** — Use a smaller model: `-m tiny` or `-m base`
-
-**Wrong language detected** — Force the language: `-l en` for English, `-l zh` for Cantonese
-
-**Garbled output** — The tool auto-detects garbled transcriptions and retries with English. If you still get bad output, try forcing the language explicitly.
-# transcriber
+Produces `dist/transcriber.exe` (GUI) and `dist/transcribe.exe` (CLI).
