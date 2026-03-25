@@ -6,3 +6,5 @@ build/
 *.egg-info/
 downloads/
 output/
+portable/
+*.zip
