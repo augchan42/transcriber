@@ -1,0 +1,13 @@
+Build Instructions (Windows)
+===========================
+
+1. Install Python:
+   winget install Python.Python.3.12
+
+2. Open Command Prompt in this folder and run:
+   build.bat
+
+3. Your exe will be at dist\transcriber.exe
+
+4. Share transcriber.exe with your friend - they just need to install ffmpeg once:
+   winget install ffmpeg
