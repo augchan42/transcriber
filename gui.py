@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Simple GUI wrapper for the video transcriber.
+Simple GUI wrapper for the video transcriber and YouTube compressor.
 
 Opens a window where the user can:
 1. Browse for a video/audio file
 2. Pick language and domain options
 3. Click "Transcribe" and see progress
 4. Get .srt and .txt files in the same folder as the video
+5. Compress video for YouTube upload (H.264, optimized settings)
 
 Uses tkinter (built into Python, no extra dependencies).
 """
@@ -70,13 +71,20 @@ class TranscriberApp:
         ("AI", "ai"),
     ]
 
+    COMPRESS_PRESETS = [
+        ("Max compression (CRF 28)", "max_compression"),
+        ("Balanced (CRF 23)", "balanced"),
+        ("High quality (CRF 18)", "high_quality"),
+    ]
+
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("Video Transcriber")
-        self.root.geometry("620x520")
+        self.root.geometry("620x580")
         self.root.resizable(True, True)
 
         self.transcribing = False
+        self.compressing = False
 
         self._build_ui()
 
@@ -144,7 +152,25 @@ class TranscriberApp:
         self.transcribe_btn = ttk.Button(
             main, text="Transcribe", command=self._start_transcribe,
         )
-        self.transcribe_btn.pack(fill=tk.X, pady=(0, 10), ipady=6)
+        self.transcribe_btn.pack(fill=tk.X, pady=(0, 5), ipady=6)
+
+        # --- YouTube compression ---
+        compress_frame = ttk.Frame(main)
+        compress_frame.pack(fill=tk.X, pady=(0, 10))
+
+        self.compress_btn = ttk.Button(
+            compress_frame, text="Compress for YouTube",
+            command=self._start_compress,
+        )
+        self.compress_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=6, padx=(0, 8))
+
+        self.compress_var = tk.StringVar(value="Max compression (CRF 28)")
+        compress_combo = ttk.Combobox(
+            compress_frame, textvariable=self.compress_var,
+            values=[p[0] for p in self.COMPRESS_PRESETS],
+            state="readonly", width=25,
+        )
+        compress_combo.pack(side=tk.RIGHT)
 
         # --- Log output ---
         log_frame = ttk.LabelFrame(main, text="Progress", padding=5)
@@ -322,6 +348,101 @@ class TranscriberApp:
             sys.stdout = old_stdout
             sys.stderr = old_stderr
             self.root.after(0, self._reset_button)
+
+    def _get_compress_preset(self) -> str:
+        label = self.compress_var.get()
+        for name, code in self.COMPRESS_PRESETS:
+            if name == label:
+                return code
+        return "max_compression"
+
+    def _start_compress(self):
+        filepath = self.file_var.get().strip()
+        if not filepath:
+            messagebox.showwarning("No file selected", "Please select a video file first.")
+            return
+        if not os.path.isfile(filepath):
+            messagebox.showerror("File not found", f"File does not exist:\n{filepath}")
+            return
+        if self.compressing or self.transcribing:
+            return
+
+        ext = os.path.splitext(filepath)[1].lower()
+        video_exts = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v", ".flv", ".3gp"}
+        if ext not in video_exts:
+            messagebox.showwarning("Not a video", "Compression is for video files only.")
+            return
+
+        self.compressing = True
+        self.compress_btn.configure(state="disabled", text="Compressing...")
+        self.transcribe_btn.configure(state="disabled")
+
+        # Clear log
+        self.log_text.configure(state="normal")
+        self.log_text.delete("1.0", tk.END)
+        self.log_text.configure(state="disabled")
+
+        thread = threading.Thread(target=self._run_compress, daemon=True)
+        thread.start()
+
+    def _run_compress(self):
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+        redirector = PrintRedirector(self.log_text)
+        sys.stdout = redirector
+        sys.stderr = redirector
+
+        try:
+            filepath = self.file_var.get().strip()
+            quality = self._get_compress_preset()
+
+            from transcription import check_ffmpeg
+            from compress import compress_for_youtube
+
+            if not check_ffmpeg():
+                self._log("ERROR: ffmpeg not found!")
+                self._log("Install it: winget install ffmpeg")
+                self._finish_compress_error()
+                return
+
+            import time
+            start_time = time.time()
+
+            result = compress_for_youtube(filepath, quality=quality)
+
+            elapsed = time.time() - start_time
+            self._log("")
+            self._log("=" * 50)
+            self._log(f"  Done! ({elapsed:.0f}s)")
+            self._log(f"  Compression: {result['ratio']:.1f}x smaller")
+            self._log(f"  Output: {result['output_path']}")
+            self._log("=" * 50)
+
+            self.root.after(0, lambda: messagebox.showinfo(
+                "Done",
+                f"Compression complete!\n\n"
+                f"{result['ratio']:.1f}x smaller\n"
+                f"{result['output_path']}",
+            ))
+
+        except Exception as e:
+            self._log(f"\nERROR: {e}")
+            import traceback
+            traceback.print_exc()
+            self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
+
+        finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+            self.root.after(0, self._reset_compress_button)
+
+    def _finish_compress_error(self):
+        self.root.after(0, self._reset_compress_button)
+
+    def _reset_compress_button(self):
+        self.compressing = False
+        self.compress_btn.configure(state="normal", text="Compress for YouTube")
+        self.transcribe_btn.configure(state="normal")
 
     def _finish_with_error(self):
         self.root.after(0, self._reset_button)

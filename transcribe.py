@@ -10,6 +10,8 @@ Usage:
     python transcribe.py video.mp4 -l zh --domain iching
     python transcribe.py "https://youtube.com/watch?v=..." -o subtitles/
     python transcribe.py audio.mp3 --format srt
+    python transcribe.py video.mp4 --compress
+    python transcribe.py video.mp4 --compress --compress-quality balanced
 """
 
 import argparse
@@ -31,6 +33,8 @@ def parse_args() -> argparse.Namespace:
             "  python transcribe.py video.mp4 -l zh --domain iching\n"
             '  python transcribe.py "https://youtube.com/watch?v=..." -o subs/\n'
             "  python transcribe.py lecture.mp4 -m small --format srt\n"
+            "  python transcribe.py video.mp4 --compress\n"
+            "  python transcribe.py video.mp4 --compress --compress-quality balanced\n"
             "\n"
             "Language tips:\n"
             "  For Cantonese content, use: -l zh  (NOT -l yue)\n"
@@ -85,6 +89,17 @@ def parse_args() -> argparse.Namespace:
         help="Keep downloaded audio file (default: clean up).",
     )
     parser.add_argument(
+        "--compress",
+        action="store_true",
+        help="Compress video for YouTube upload (H.264, no transcription).",
+    )
+    parser.add_argument(
+        "--compress-quality",
+        default="max_compression",
+        choices=["high_quality", "balanced", "max_compression"],
+        help="Compression quality preset (default: max_compression = CRF 28).",
+    )
+    parser.add_argument(
         "-v", "--verbose",
         action="store_true",
         help="Enable verbose logging.",
@@ -116,6 +131,44 @@ def main() -> int:
         print("  macOS:   brew install ffmpeg", file=sys.stderr)
         print("  Windows: winget install ffmpeg", file=sys.stderr)
         return 1
+
+    # --- Compress-only mode ---
+    if args.compress:
+        from compress import compress_for_youtube
+
+        if not os.path.isfile(args.input):
+            print(f"ERROR: File not found: {args.input}", file=sys.stderr)
+            return 1
+
+        try:
+            start_time = time.time()
+            output_path = None
+            if args.output:
+                # Use output dir with original filename + _compressed
+                base = os.path.splitext(os.path.basename(args.input))[0]
+                output_path = os.path.join(args.output, f"{base}_compressed.mp4")
+
+            result = compress_for_youtube(
+                args.input,
+                output_path=output_path,
+                quality=args.compress_quality,
+            )
+            elapsed = time.time() - start_time
+
+            print()
+            print("=" * 60)
+            print(f"  Compression: {result['ratio']:.1f}x smaller")
+            print(f"  Time taken:  {elapsed:.1f}s")
+            print(f"  Output:      {result['output_path']}")
+            print("=" * 60)
+            return 0
+
+        except Exception as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            if args.verbose:
+                import traceback
+                traceback.print_exc()
+            return 1
 
     # Speed warnings for large models on CPU
     if args.model == "large-v3":
