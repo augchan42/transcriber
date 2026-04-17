@@ -57,8 +57,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "-m", "--model",
         default="base",
-        choices=["tiny", "base", "small", "medium", "large-v3"],
-        help="Whisper model size (default: base). 'base' is recommended for CPU.",
+        help=(
+            "Whisper model to load. Accepts: (a) a standard size — "
+            "tiny/base/small/medium/large-v3 (default: base); "
+            "(b) an HF repo id like 'alvanlii/whisper-small-cantonese'; "
+            "(c) a local directory containing CTranslate2 model files."
+        ),
     )
     parser.add_argument(
         "-l", "--language",
@@ -75,6 +79,41 @@ def parse_args() -> argparse.Namespace:
         default="both",
         choices=["srt", "txt", "both"],
         help="Output format (default: both).",
+    )
+    parser.add_argument(
+        "--device",
+        default="auto",
+        choices=["cpu", "cuda", "auto"],
+        help="Inference device (default: auto — use cuda if available, else cpu).",
+    )
+    parser.add_argument(
+        "--compute-type",
+        default=None,
+        help=(
+            "CTranslate2 compute type. Default: float16 on cuda, int8 on cpu. "
+            "Valid: float32, float16, int8, int8_float16, int8_float32, int16."
+        ),
+    )
+    parser.add_argument(
+        "--vad-filter",
+        action="store_true",
+        help=(
+            "Enable Silero VAD pre-filter — skips silence regions, producing "
+            "longer coherent speech segments. Recommended for podcasts/meetings."
+        ),
+    )
+    parser.add_argument(
+        "--word-timestamps",
+        action="store_true",
+        help="Emit word-level timestamps inside each segment (useful for downstream batching).",
+    )
+    parser.add_argument(
+        "--no-condition-prev",
+        action="store_true",
+        help=(
+            "Disable condition_on_previous_text. Reduces hallucination/repetition loops "
+            "at the cost of slightly less-consistent phrasing across segments."
+        ),
     )
     parser.add_argument(
         "--max-duration",
@@ -170,15 +209,24 @@ def main() -> int:
                 traceback.print_exc()
             return 1
 
-    # Speed warnings for large models on CPU
-    if args.model == "large-v3":
-        print("WARNING: large-v3 on CPU is very slow (expect 10-20x real-time).")
-        print("         Consider 'base' or 'small' for faster results.")
-        print()
-    elif args.model == "medium":
-        print("Note: 'medium' model on CPU is slow (expect 5-10x real-time).")
-        print("      Use 'base' for faster results with good accuracy.")
-        print()
+    # Speed warnings for large models on CPU (only when explicitly running on CPU)
+    effective_device = args.device
+    if effective_device == "auto":
+        try:
+            import ctranslate2
+            effective_device = "cuda" if "float16" in ctranslate2.get_supported_compute_types("cuda") else "cpu"
+        except Exception:
+            effective_device = "cpu"
+
+    if effective_device == "cpu":
+        if args.model == "large-v3":
+            print("WARNING: large-v3 on CPU is very slow (expect 10-20x real-time).")
+            print("         Consider 'base' or 'small' for faster results.")
+            print()
+        elif args.model == "medium":
+            print("Note: 'medium' model on CPU is slow (expect 5-10x real-time).")
+            print("      Use 'base' for faster results with good accuracy.")
+            print()
 
     # Track temp files for cleanup
     temp_files: list[str] = []
@@ -227,6 +275,11 @@ def main() -> int:
             language=args.language,
             domain_category=args.domain,
             max_duration=args.max_duration,
+            device=effective_device,
+            compute_type=args.compute_type,
+            vad_filter=args.vad_filter,
+            word_timestamps=args.word_timestamps,
+            condition_on_previous_text=not args.no_condition_prev,
         )
 
         elapsed = time.time() - start_time

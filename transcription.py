@@ -22,16 +22,27 @@ logger = logging.getLogger(__name__)
 _model_cache: dict[str, WhisperModel] = {}
 
 
-def load_model(model_size: str, compute_type: str | None = None) -> WhisperModel:
+def load_model(
+    model_size: str,
+    compute_type: str | None = None,
+    device: str = "cpu",
+) -> WhisperModel:
     """
-    Load a faster-whisper model for CPU inference.
+    Load a faster-whisper model.
 
-    Auto-selects int8 quantization if AVX2 is available, otherwise float32.
-    Models are cached globally so subsequent calls with the same size are instant.
+    Auto-selects compute type based on device:
+      - cuda: float16 (fastest, most accurate on GPU)
+      - cpu:  int8 if AVX2 available, float32 otherwise
+
+    Models are cached globally so subsequent calls with the same
+    (model, device, compute_type) triple are instant.
 
     Args:
-        model_size: 'tiny', 'base', 'small', 'medium', or 'large-v3'.
-        compute_type: Override quantization type. None = auto-detect.
+        model_size: A standard size ('tiny'/'base'/'small'/'medium'/'large-v3'),
+                    an HF repo id (e.g. 'alvanlii/whisper-small-cantonese'),
+                    or a local directory path containing CT2 model files.
+        compute_type: Override quantization type. None = auto-detect by device.
+        device: 'cpu' or 'cuda'.
 
     Returns:
         WhisperModel instance.
@@ -43,16 +54,19 @@ def load_model(model_size: str, compute_type: str | None = None) -> WhisperModel
     if compute_type is None:
         try:
             import ctranslate2
-            supported = ctranslate2.get_supported_compute_types("cpu")
-            compute_type = "int8" if "int8" in supported else "float32"
+            supported = ctranslate2.get_supported_compute_types(device)
+            if device == "cuda":
+                compute_type = "float16" if "float16" in supported else "float32"
+            else:
+                compute_type = "int8" if "int8" in supported else "float32"
         except Exception:
             compute_type = "float32"
 
-    cache_key = f"{model_size}_cpu_{compute_type}"
+    cache_key = f"{model_size}_{device}_{compute_type}"
     if cache_key not in _model_cache:
-        logger.info(f"Loading Whisper model: {model_size} (CPU, {compute_type})")
-        print(f"Loading model: {model_size} ({compute_type} quantization)...")
-        _model_cache[cache_key] = WhisperModel(model_size, device="cpu", compute_type=compute_type)
+        logger.info(f"Loading Whisper model: {model_size} ({device}, {compute_type})")
+        print(f"Loading model: {model_size} ({device}, {compute_type} quantization)...")
+        _model_cache[cache_key] = WhisperModel(model_size, device=device, compute_type=compute_type)
         print("Model loaded.")
 
     return _model_cache[cache_key]
@@ -145,27 +159,62 @@ def extract_audio_from_video(video_path: str) -> str:
         raise
 
 
+def _segment_to_dict(seg) -> dict:
+    """Convert a faster-whisper Segment (possibly with words) to a plain dict."""
+    entry = {
+        "start": seg.start,
+        "end": seg.end,
+        "text": seg.text.strip() if seg.text else "",
+    }
+    # Preserve word-level timestamps when available
+    words = getattr(seg, "words", None)
+    if words:
+        entry["words"] = [
+            {
+                "start": w.start,
+                "end": w.end,
+                "word": w.word,
+                "probability": getattr(w, "probability", None),
+            }
+            for w in words
+        ]
+    return entry
+
+
 def transcribe_with_timestamps(
     audio_path: str,
     model_size: str = "base",
     language: str | None = None,
     domain_category: str | None = None,
     max_duration: int | None = None,
+    device: str = "cpu",
+    compute_type: str | None = None,
+    vad_filter: bool = False,
+    word_timestamps: bool = False,
+    condition_on_previous_text: bool = True,
 ) -> dict:
     """
     Transcribe an audio file and return segments with timestamps.
 
     Args:
         audio_path: Path to audio file (.wav, .mp3, etc.).
-        model_size: Whisper model size.
+        model_size: Whisper model size, HF repo id, or local CT2 dir.
         language: Force language code (e.g., 'en', 'zh'). None = auto-detect.
         domain_category: Domain for Cantonese vocabulary hints (e.g., 'iching').
         max_duration: Only transcribe first N seconds (for testing).
+        device: 'cpu' or 'cuda'.
+        compute_type: CTranslate2 compute type override. None = auto by device.
+        vad_filter: Enable Silero VAD silence pre-filtering.
+        word_timestamps: Include per-word timestamps inside each segment.
+        condition_on_previous_text: When False, reduces hallucination loops at the
+            cost of slightly less-consistent phrasing across segments. Default True
+            matches Whisper's reference behavior.
 
     Returns:
-        Dict with 'text' (str), 'segments' (list of dicts), 'language' (str).
+        Dict with 'text' (str), 'segments' (list of dicts), 'language' (str),
+        'duration' (float).
     """
-    model = load_model(model_size)
+    model = load_model(model_size, compute_type=compute_type, device=device)
 
     # Get domain-specific vocabulary prompt for Cantonese
     initial_prompt = get_domain_prompt(domain_category) if domain_category else None
@@ -179,6 +228,9 @@ def transcribe_with_timestamps(
         "language": language,
         "initial_prompt": initial_prompt,
         "log_progress": True,
+        "vad_filter": vad_filter,
+        "word_timestamps": word_timestamps,
+        "condition_on_previous_text": condition_on_previous_text,
     }
     if max_duration:
         transcribe_kwargs["clip_timestamps"] = f"0,{max_duration}"
@@ -193,11 +245,7 @@ def transcribe_with_timestamps(
     for seg in segments_generator:
         if seg is None:
             continue
-        segment_list.append({
-            "start": seg.start,
-            "end": seg.end,
-            "text": seg.text.strip() if seg.text else "",
-        })
+        segment_list.append(_segment_to_dict(seg))
 
     transcript = " ".join(seg["text"] for seg in segment_list)
     detected_language = info.language
@@ -218,16 +266,15 @@ def transcribe_with_timestamps(
                 audio=audio_path,
                 language="en",
                 initial_prompt=initial_prompt,
+                vad_filter=vad_filter,
+                word_timestamps=word_timestamps,
+                condition_on_previous_text=condition_on_previous_text,
             )
             segment_list = []
             for seg in retry_segments:
                 if seg is None:
                     continue
-                segment_list.append({
-                    "start": seg.start,
-                    "end": seg.end,
-                    "text": seg.text.strip() if seg.text else "",
-                })
+                segment_list.append(_segment_to_dict(seg))
             transcript = " ".join(seg["text"] for seg in segment_list)
             detected_language = "en"
 
