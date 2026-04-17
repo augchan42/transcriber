@@ -33,6 +33,29 @@ That's it! You get a `.srt` file (subtitles) and a `.txt` file (plain text) in t
 
 ---
 
+## YouTube Upload (optional)
+
+The app can also upload your compressed video directly to the shared YouTube account with automatic resume if the network drops.
+
+**First-time setup (once):**
+
+1. Pick any video, then click **Sign in to YouTube**
+2. A browser window opens — sign in with the shared podcast Google account
+3. Approve the permissions — the tab will say "Authorized!"
+
+**Every upload after that:**
+
+1. Pick the video file (usually the `_compressed.mp4` from the compress step)
+2. Edit the title (auto-filled from filename)
+3. Pick privacy: **unlisted** (default), **private**, or **public**
+4. Click **Upload to YouTube**
+
+If the upload fails mid-way (bad Wi-Fi, laptop sleep, etc.), just click **Upload to YouTube** again — it picks up where it left off using a `.resume` sidecar file.
+
+> The video always goes to the shared channel tied to the login, regardless of who signs in.
+
+---
+
 ## For Cantonese Videos
 
 - Set language to **Cantonese / Chinese (zh)**

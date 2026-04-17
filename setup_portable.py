@@ -38,6 +38,9 @@ SOURCE_FILES = [
     "downloader.py",
     "srt_formatter.py",
     "cantonese.py",
+    "compress.py",
+    "yt_auth.py",
+    "yt_upload.py",
     "requirements.txt",
 ]
 
@@ -251,6 +254,14 @@ def create_readme_txt():
         '4. Click "Transcribe"',
         "5. Subtitle files (.srt and .txt) appear next to your video",
         "",
+        "YOUTUBE UPLOAD (optional):",
+        "--------------------------",
+        '1. Pick a video, then click "Sign in to YouTube" (first time only)',
+        "   A browser window opens — sign in with the shared podcast account",
+        '2. Enter a title, pick Privacy (unlisted/private/public)',
+        '3. Click "Upload to YouTube"',
+        "   Upload auto-resumes if the network drops mid-upload",
+        "",
         "TROUBLESHOOTING:",
         "----------------",
         '- "ffmpeg not found" -> Run install_ffmpeg.bat again',
@@ -278,6 +289,18 @@ def main():
             print(f"  Copied: {filename}")
         else:
             print(f"  WARNING: {filename} not found, skipping")
+
+    # Copy OAuth client_secret (safe to bundle) but not yt-tokens.json (has refresh token)
+    secrets_src = "secrets"
+    secrets_dst = os.path.join(PORTABLE_DIR, "secrets")
+    if os.path.isdir(secrets_src):
+        os.makedirs(secrets_dst, exist_ok=True)
+        for name in os.listdir(secrets_src):
+            if name.startswith("client_secret_") and name.endswith(".json"):
+                shutil.copy2(os.path.join(secrets_src, name), os.path.join(secrets_dst, name))
+                print(f"  Copied: secrets/{name}")
+        if not any(f.startswith("client_secret_") for f in os.listdir(secrets_dst)):
+            print("  WARNING: no client_secret_*.json found in secrets/ — YouTube upload won't work")
 
     # Create batch files
     batch_files = {

@@ -198,6 +198,10 @@ def create_zip():
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for root, dirs, files in os.walk(PORTABLE_DIR):
             for file in files:
+                # Never bundle OAuth refresh tokens
+                if file == "yt-tokens.json":
+                    print(f"  Skipping secret: {file}")
+                    continue
                 filepath = os.path.join(root, file)
                 arcname = os.path.relpath(filepath, "portable")
                 zf.write(filepath, arcname)

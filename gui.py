@@ -77,14 +77,18 @@ class TranscriberApp:
         ("High quality (CRF 18)", "high_quality"),
     ]
 
+    PRIVACY_OPTIONS = ["unlisted", "private", "public"]
+
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("Video Transcriber")
-        self.root.geometry("620x580")
+        self.root.geometry("620x760")
         self.root.resizable(True, True)
 
         self.transcribing = False
         self.compressing = False
+        self.uploading = False
+        self.signing_in = False
 
         self._build_ui()
 
@@ -171,6 +175,44 @@ class TranscriberApp:
             state="readonly", width=25,
         )
         compress_combo.pack(side=tk.RIGHT)
+
+        # --- YouTube upload ---
+        upload_frame = ttk.LabelFrame(main, text="YouTube Upload", padding=8)
+        upload_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # Row: Title entry
+        title_row = ttk.Frame(upload_frame)
+        title_row.pack(fill=tk.X, pady=(0, 5))
+        ttk.Label(title_row, text="Title:").pack(side=tk.LEFT)
+        self.yt_title_var = tk.StringVar()
+        title_entry = ttk.Entry(title_row, textvariable=self.yt_title_var)
+        title_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 0))
+
+        # Row: Privacy + buttons
+        upload_row = ttk.Frame(upload_frame)
+        upload_row.pack(fill=tk.X)
+        ttk.Label(upload_row, text="Privacy:").pack(side=tk.LEFT)
+        self.yt_privacy_var = tk.StringVar(value="unlisted")
+        privacy_combo = ttk.Combobox(
+            upload_row, textvariable=self.yt_privacy_var,
+            values=self.PRIVACY_OPTIONS, state="readonly", width=10,
+        )
+        privacy_combo.pack(side=tk.LEFT, padx=(5, 10))
+
+        self.signin_btn = ttk.Button(
+            upload_row, text="Sign in to YouTube",
+            command=self._start_yt_signin,
+        )
+        self.signin_btn.pack(side=tk.LEFT, padx=(0, 5))
+
+        self.upload_btn = ttk.Button(
+            upload_row, text="Upload to YouTube",
+            command=self._start_upload,
+        )
+        self.upload_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Auto-fill title when file is picked
+        self.file_var.trace_add("write", self._autofill_title)
 
         # --- Log output ---
         log_frame = ttk.LabelFrame(main, text="Progress", padding=5)
@@ -450,6 +492,155 @@ class TranscriberApp:
     def _reset_button(self):
         self.transcribing = False
         self.transcribe_btn.configure(state="normal", text="Transcribe")
+
+    # --- YouTube upload / auth ---
+
+    def _autofill_title(self, *_args):
+        """Populate the title field from the selected filename (without extension)."""
+        path = self.file_var.get().strip()
+        if not path:
+            return
+        base = os.path.splitext(os.path.basename(path))[0]
+        # Don't overwrite a title the user has typed
+        if not self.yt_title_var.get().strip():
+            self.yt_title_var.set(base)
+
+    def _busy(self) -> bool:
+        return self.transcribing or self.compressing or self.uploading or self.signing_in
+
+    def _start_yt_signin(self):
+        if self._busy():
+            return
+        self.signing_in = True
+        self.signin_btn.configure(state="disabled", text="Signing in...")
+        self.upload_btn.configure(state="disabled")
+        thread = threading.Thread(target=self._run_yt_signin, daemon=True)
+        thread.start()
+
+    def _run_yt_signin(self):
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+        redirector = PrintRedirector(self.log_text)
+        sys.stdout = redirector
+        sys.stderr = redirector
+        try:
+            from yt_auth import run_auth_flow
+            run_auth_flow(log=self._log)
+            self.root.after(0, lambda: messagebox.showinfo(
+                "Signed in", "YouTube sign-in complete. You can now upload."
+            ))
+        except Exception as e:
+            self._log(f"\nERROR: {e}")
+            import traceback
+            traceback.print_exc()
+            self.root.after(0, lambda: messagebox.showerror("Sign-in failed", str(e)))
+        finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+            self.root.after(0, self._reset_signin_button)
+
+    def _reset_signin_button(self):
+        self.signing_in = False
+        self.signin_btn.configure(state="normal", text="Sign in to YouTube")
+        self.upload_btn.configure(state="normal")
+
+    def _start_upload(self):
+        filepath = self.file_var.get().strip()
+        if not filepath:
+            messagebox.showwarning("No file selected", "Please select a video file first.")
+            return
+        if not os.path.isfile(filepath):
+            messagebox.showerror("File not found", f"File does not exist:\n{filepath}")
+            return
+        if self._busy():
+            return
+
+        ext = os.path.splitext(filepath)[1].lower()
+        video_exts = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v", ".flv", ".3gp"}
+        if ext not in video_exts:
+            messagebox.showwarning("Not a video", "Upload is for video files only.")
+            return
+
+        title = self.yt_title_var.get().strip()
+        if not title:
+            messagebox.showwarning("No title", "Please enter a title for the video.")
+            return
+
+        self.uploading = True
+        self.upload_btn.configure(state="disabled", text="Uploading...")
+        self.transcribe_btn.configure(state="disabled")
+        self.compress_btn.configure(state="disabled")
+        self.signin_btn.configure(state="disabled")
+
+        thread = threading.Thread(target=self._run_upload, daemon=True)
+        thread.start()
+
+    def _run_upload(self):
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+        redirector = PrintRedirector(self.log_text)
+        sys.stdout = redirector
+        sys.stderr = redirector
+        try:
+            filepath = self.file_var.get().strip()
+            title = self.yt_title_var.get().strip()
+            privacy = self.yt_privacy_var.get()
+
+            from yt_upload import upload_video, format_size
+
+            size = os.path.getsize(filepath)
+            self._log(f"File:    {filepath}")
+            self._log(f"Size:    {format_size(size)}")
+            self._log(f"Title:   {title}")
+            self._log(f"Privacy: {privacy}")
+            self._log("")
+
+            last_pct = {"value": -1}
+
+            def on_progress(sent: int, total: int):
+                pct = int(sent * 100 / total) if total else 0
+                if pct != last_pct["value"]:
+                    last_pct["value"] = pct
+                    self._log(f"  {pct}%  ({format_size(sent)} / {format_size(total)})")
+
+            import time
+            start = time.time()
+            result = upload_video(
+                filepath,
+                title=title,
+                privacy=privacy,
+                on_progress=on_progress,
+                log=self._log,
+            )
+            elapsed = time.time() - start
+
+            url = result.get("url") or "(no URL returned)"
+            self._log("")
+            self._log("=" * 50)
+            self._log(f"  Done! ({elapsed:.0f}s)")
+            self._log(f"  Video: {url}")
+            self._log("=" * 50)
+
+            self.root.after(0, lambda: messagebox.showinfo(
+                "Upload complete",
+                f"Video uploaded as {privacy}.\n\n{url}",
+            ))
+        except Exception as e:
+            self._log(f"\nERROR: {e}")
+            import traceback
+            traceback.print_exc()
+            self.root.after(0, lambda: messagebox.showerror("Upload failed", str(e)))
+        finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+            self.root.after(0, self._reset_upload_button)
+
+    def _reset_upload_button(self):
+        self.uploading = False
+        self.upload_btn.configure(state="normal", text="Upload to YouTube")
+        self.transcribe_btn.configure(state="normal")
+        self.compress_btn.configure(state="normal")
+        self.signin_btn.configure(state="normal")
 
 
 def main():
