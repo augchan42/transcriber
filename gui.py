@@ -168,7 +168,7 @@ class TranscriberApp:
         )
         self.compress_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=6, padx=(0, 8))
 
-        self.compress_var = tk.StringVar(value="Max compression (CRF 28)")
+        self.compress_var = tk.StringVar(value="Balanced (CRF 23)")
         compress_combo = ttk.Combobox(
             compress_frame, textvariable=self.compress_var,
             values=[p[0] for p in self.COMPRESS_PRESETS],
@@ -396,7 +396,7 @@ class TranscriberApp:
         for name, code in self.COMPRESS_PRESETS:
             if name == label:
                 return code
-        return "max_compression"
+        return "balanced"
 
     def _start_compress(self):
         filepath = self.file_var.get().strip()

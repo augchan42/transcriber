@@ -27,7 +27,7 @@ QUALITY_PRESETS = {
     "max_compression": ("Max compression (CRF 28)", 28, "slow", "96k"),
 }
 
-DEFAULT_PRESET = "max_compression"
+DEFAULT_PRESET = "balanced"
 
 
 def get_video_info(video_path: str) -> dict:
