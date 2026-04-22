@@ -35,24 +35,35 @@ That's it! You get a `.srt` file (subtitles) and a `.txt` file (plain text) in t
 
 ## YouTube Upload (optional)
 
-The app can also upload your compressed video directly to the shared YouTube account with automatic resume if the network drops.
+The app can also upload your compressed video directly to YouTube with
+automatic resume if the network drops.
 
-**First-time setup (once):**
+### First-time setup — one-time, about 5 minutes
 
-1. Pick any video, then click **Sign in to YouTube**
-2. A browser window opens — sign in with the shared podcast Google account
-3. Approve the permissions — the tab will say "Authorized!"
+Because this is an open-source app, it ships **without** Google credentials
+baked in. You create your own free Google Cloud project and plug it into
+the app. This keeps your upload access under your control and avoids
+any shared-credential risk.
 
-**Every upload after that:**
+Follow the short walkthrough: **[docs/youtube-setup.md](docs/youtube-setup.md)**
+
+The first time you click **Sign in to YouTube** without credentials in
+place, the app pops open a dialog with buttons to open the guide and the
+`secrets/` folder — no hunting around required.
+
+### Every upload after that
 
 1. Pick the video file (usually the `_compressed.mp4` from the compress step)
 2. Edit the title (auto-filled from filename)
 3. Pick privacy: **unlisted** (default), **private**, or **public**
 4. Click **Upload to YouTube**
 
-If the upload fails mid-way (bad Wi-Fi, laptop sleep, etc.), just click **Upload to YouTube** again — it picks up where it left off using a `.resume` sidecar file.
+If the upload fails mid-way (bad Wi-Fi, laptop sleep, etc.), just click
+**Upload to YouTube** again — it resumes from where it stopped using a
+`.resume` sidecar file.
 
-> The video always goes to the shared channel tied to the login, regardless of who signs in.
+> Uploads go to the YouTube channel tied to the Google account you signed
+> in with, not some shared account.
 
 ---
 

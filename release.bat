@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 echo ============================================
 echo   Package TranscriberPortable for Release
@@ -46,13 +46,17 @@ if errorlevel 1 (
     )
 )
 
-REM Copy OAuth client secret
-if exist "secrets\client_secret_*.json" (
-    if not exist "%OUT%\secrets" mkdir "%OUT%\secrets"
-    copy /y "secrets\client_secret_*.json" "%OUT%\secrets\" >nul
-    echo   Copied client_secret to secrets\
-) else (
-    echo   WARNING: no secrets\client_secret_*.json — YouTube upload won't work
+REM NOTE: we deliberately do NOT bundle secrets\client_secret_*.json.
+REM This is an open-source release — users bring their own Google OAuth
+REM client (see docs\youtube-setup.md). The secrets\ folder is created
+REM empty so the app can drop yt-tokens.json there after sign-in.
+if not exist "%OUT%\secrets" mkdir "%OUT%\secrets"
+echo   Created empty secrets\ folder (users add client_secret_*.json themselves)
+
+REM Copy the BYO-credentials setup guide
+if exist "docs\youtube-setup.md" (
+    copy /y "docs\youtube-setup.md" "%OUT%\youtube-setup.md" >nul
+    echo   Copied youtube-setup.md
 )
 
 REM Create README
@@ -73,25 +77,16 @@ echo.
 echo.
 echo YouTube Upload ^(optional^)
 echo -------------------------
-echo The app can compress videos for YouTube and upload them directly to
-echo the shared podcast channel with auto-resume if the network drops.
+echo The app can compress videos for YouTube and upload them with
+echo auto-resume if the network drops.
 echo.
-echo First-time setup ^(once^):
-echo 1. Pick any video, then click "Sign in to YouTube"
-echo 2. A browser opens -- sign in with the shared podcast Google account
-echo 3. Approve the permissions
+echo First-time setup: you need your own Google OAuth credentials.
+echo See youtube-setup.md ^(next to this file^) for a 5-minute walkthrough.
 echo.
-echo Every upload after that:
-echo 1. Click "Compress for YouTube" ^(optional but recommended^)
-echo 2. Pick the _compressed.mp4 file
-echo 3. Enter a title, pick Privacy ^(unlisted / private / public^)
-echo 4. Click "Upload to YouTube"
-echo.
-echo If the upload fails partway, just click Upload again -- it resumes
-echo from where it stopped.
-echo.
-echo Requires a "secrets/" folder next to transcriber.exe containing
-echo client_secret_*.json. Your tech friend has already put it there.
+echo Once you have the credentials file in secrets\:
+echo 1. Click "Sign in to YouTube" -- browser opens, approve the app
+echo 2. Pick a video, enter a title, pick privacy, click Upload
+echo 3. If upload fails partway, click Upload again -- it resumes
 ) > "%OUT%\README.txt"
 echo   Created README.txt
 
@@ -121,11 +116,19 @@ echo.
 
 if exist TranscriberPortable.zip (
     for %%Z in (TranscriberPortable.zip) do echo   Zip size: %%~zZ bytes
+
+    REM Compute SHA256 for winget manifest
+    for /f "tokens=*" %%H in ('powershell -NoProfile -Command "(Get-FileHash -Algorithm SHA256 'TranscriberPortable.zip').Hash"') do (
+        if not defined ZIP_SHA256 set "ZIP_SHA256=%%H"
+    )
+    echo   SHA256:   !ZIP_SHA256!
     echo.
     echo   To publish on GitHub:
-    echo     gh release create v2.0.0 TranscriberPortable.zip --title "Video Transcriber v2.0.0" --notes "..."
+    echo     gh release create vX.Y.Z TranscriberPortable.zip --title "Video Transcriber vX.Y.Z" --notes "..."
     echo.
-    echo   Or just send TranscriberPortable.zip directly to your friend.
+    echo   For the winget manifest, use:
+    echo     InstallerUrl:    https://github.com/augchan42/transcriber/releases/download/vX.Y.Z/TranscriberPortable.zip
+    echo     InstallerSha256: !ZIP_SHA256!
 )
 echo.
 pause

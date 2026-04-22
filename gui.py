@@ -12,7 +12,9 @@ Opens a window where the user can:
 Uses tkinter (built into Python, no extra dependencies).
 """
 
+import glob
 import os
+import subprocess
 import sys
 import threading
 import tkinter as tk
@@ -508,8 +510,103 @@ class TranscriberApp:
     def _busy(self) -> bool:
         return self.transcribing or self.compressing or self.uploading or self.signing_in
 
+    def _app_base_dir(self) -> str:
+        """Directory of the running .exe (frozen) or this script (dev)."""
+        if getattr(sys, "frozen", False):
+            return os.path.dirname(sys.executable)
+        return os.path.dirname(os.path.abspath(__file__))
+
+    def _has_client_secret(self) -> bool:
+        secrets_dir = os.path.join(self._app_base_dir(), "secrets")
+        return bool(glob.glob(os.path.join(secrets_dir, "client_secret_*.json")))
+
+    def _open_in_explorer(self, path: str):
+        """Open a file or folder with the OS default handler."""
+        try:
+            if os.name == "nt":
+                os.startfile(path)  # type: ignore[attr-defined]
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", path])
+            else:
+                subprocess.Popen(["xdg-open", path])
+        except Exception as e:
+            messagebox.showerror("Could not open", f"{path}\n\n{e}")
+
+    def _prompt_missing_client_secret(self):
+        """Show a dialog when client_secret_*.json is missing.
+
+        Offers buttons to open the setup guide and the secrets folder.
+        """
+        base = self._app_base_dir()
+        secrets_dir = os.path.join(base, "secrets")
+        os.makedirs(secrets_dir, exist_ok=True)
+
+        # Guide is shipped next to the exe as youtube-setup.md, or under
+        # docs/ when running from source.
+        guide_candidates = [
+            os.path.join(base, "youtube-setup.md"),
+            os.path.join(base, "docs", "youtube-setup.md"),
+        ]
+        guide_path = next((p for p in guide_candidates if os.path.isfile(p)), None)
+        guide_url = "https://github.com/augchan42/transcriber/blob/main/docs/youtube-setup.md"
+
+        dlg = tk.Toplevel(self.root)
+        dlg.title("YouTube credentials needed")
+        dlg.transient(self.root)
+        dlg.grab_set()
+        dlg.resizable(False, False)
+
+        frm = ttk.Frame(dlg, padding=15)
+        frm.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(
+            frm,
+            text="YouTube upload needs your own Google OAuth credentials.",
+            font=("Segoe UI", 10, "bold"),
+        ).pack(anchor="w", pady=(0, 8))
+
+        body = (
+            "This is a one-time setup (about 5 minutes):\n\n"
+            "  1. Follow the setup guide to create a free Google Cloud\n"
+            "     project and download a client_secret_*.json file.\n"
+            "  2. Drop that file into the secrets\\ folder.\n"
+            "  3. Come back here and click Sign in to YouTube again.\n\n"
+            "The guide explains exactly what to click."
+        )
+        ttk.Label(frm, text=body, justify=tk.LEFT).pack(anchor="w", pady=(0, 12))
+
+        btn_row = ttk.Frame(frm)
+        btn_row.pack(fill=tk.X)
+
+        def open_guide():
+            if guide_path:
+                self._open_in_explorer(guide_path)
+            else:
+                self._open_in_explorer(guide_url)
+
+        def open_secrets():
+            self._open_in_explorer(secrets_dir)
+
+        ttk.Button(btn_row, text="Open setup guide", command=open_guide).pack(
+            side=tk.LEFT, padx=(0, 6)
+        )
+        ttk.Button(btn_row, text="Open secrets folder", command=open_secrets).pack(
+            side=tk.LEFT, padx=(0, 6)
+        )
+        ttk.Button(btn_row, text="Close", command=dlg.destroy).pack(side=tk.RIGHT)
+
+        dlg.update_idletasks()
+        # Center over main window
+        rx = self.root.winfo_rootx() + (self.root.winfo_width() - dlg.winfo_width()) // 2
+        ry = self.root.winfo_rooty() + (self.root.winfo_height() - dlg.winfo_height()) // 2
+        dlg.geometry(f"+{max(rx, 0)}+{max(ry, 0)}")
+        dlg.wait_window()
+
     def _start_yt_signin(self):
         if self._busy():
+            return
+        if not self._has_client_secret():
+            self._prompt_missing_client_secret()
             return
         self.signing_in = True
         self.signin_btn.configure(state="disabled", text="Signing in...")
@@ -564,6 +661,10 @@ class TranscriberApp:
         title = self.yt_title_var.get().strip()
         if not title:
             messagebox.showwarning("No title", "Please enter a title for the video.")
+            return
+
+        if not self._has_client_secret():
+            self._prompt_missing_client_secret()
             return
 
         self.uploading = True

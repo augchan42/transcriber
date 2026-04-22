@@ -1,0 +1,50 @@
+# Auto-submits a winget-pkgs PR whenever a GitHub release is published.
+#
+# SETUP (one-time, before enabling this workflow):
+#   1. Create a fine-grained or classic GitHub PAT with `public_repo` scope
+#      (classic tokens work; fine-grained also work with contents: write +
+#      pull-requests: write on your fork of microsoft/winget-pkgs).
+#   2. Fork microsoft/winget-pkgs to your account once (via gh repo fork or UI).
+#   3. Add the PAT as a repository secret named WINGET_TOKEN in
+#      Settings → Secrets and variables → Actions.
+#   4. Remove the `if: false` guard below to enable.
+#
+# NOTES:
+#   - Only fires on *published*, non-draft, non-prerelease releases.
+#   - Expects the release asset to be named exactly TranscriberPortable.zip.
+#   - Safe to trigger manually via Actions → Run workflow (pick a tag).
+
+name: winget-releaser
+
+on:
+  release:
+    types: [released]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish (e.g. v2.0.1)
+        required: true
+
+jobs:
+  submit:
+    # Remove `if: false` once WINGET_TOKEN is configured.
+    if: false
+    runs-on: windows-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            "tag=${{ inputs.tag }}" >> $env:GITHUB_OUTPUT
+          } else {
+            "tag=${{ github.event.release.tag_name }}" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Submit to winget-pkgs
+        uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: Augchan42.Transcriber
+          version: ${{ steps.tag.outputs.tag }}
+          installers-regex: '^TranscriberPortable\.zip$'
+          token: ${{ secrets.WINGET_TOKEN }}

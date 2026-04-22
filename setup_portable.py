@@ -256,10 +256,12 @@ def create_readme_txt():
         "",
         "YOUTUBE UPLOAD (optional):",
         "--------------------------",
-        '1. Pick a video, then click "Sign in to YouTube" (first time only)',
-        "   A browser window opens — sign in with the shared podcast account",
-        '2. Enter a title, pick Privacy (unlisted/private/public)',
-        '3. Click "Upload to YouTube"',
+        "First-time setup: see youtube-setup.md for a 5-minute walkthrough",
+        "to create your own Google OAuth credentials. You only do this once.",
+        "",
+        '1. Click "Sign in to YouTube" -- if credentials are missing, the',
+        "   app opens a dialog with buttons to the guide and secrets folder",
+        '2. After sign-in, enter a title and privacy, then "Upload to YouTube"',
         "   Upload auto-resumes if the network drops mid-upload",
         "",
         "TROUBLESHOOTING:",
@@ -290,17 +292,19 @@ def main():
         else:
             print(f"  WARNING: {filename} not found, skipping")
 
-    # Copy OAuth client_secret (safe to bundle) but not yt-tokens.json (has refresh token)
-    secrets_src = "secrets"
+    # Open-source build: do NOT bundle client_secret_*.json. Users create
+    # their own Google OAuth credentials (see docs/youtube-setup.md) and
+    # drop the file into secrets/ on first run. Create the empty folder
+    # so the app has a place to write yt-tokens.json after sign-in.
     secrets_dst = os.path.join(PORTABLE_DIR, "secrets")
-    if os.path.isdir(secrets_src):
-        os.makedirs(secrets_dst, exist_ok=True)
-        for name in os.listdir(secrets_src):
-            if name.startswith("client_secret_") and name.endswith(".json"):
-                shutil.copy2(os.path.join(secrets_src, name), os.path.join(secrets_dst, name))
-                print(f"  Copied: secrets/{name}")
-        if not any(f.startswith("client_secret_") for f in os.listdir(secrets_dst)):
-            print("  WARNING: no client_secret_*.json found in secrets/ — YouTube upload won't work")
+    os.makedirs(secrets_dst, exist_ok=True)
+    print("  Created empty: secrets/  (user adds client_secret_*.json)")
+
+    # Ship the setup guide next to the app so the GUI can open it.
+    guide_src = os.path.join("docs", "youtube-setup.md")
+    if os.path.isfile(guide_src):
+        shutil.copy2(guide_src, os.path.join(PORTABLE_DIR, "youtube-setup.md"))
+        print(f"  Copied: {guide_src}")
 
     # Create batch files
     batch_files = {

@@ -88,14 +88,12 @@ if errorlevel 1 (
 )
 
 echo.
-echo Copying OAuth client secret next to transcriber.exe...
-if exist "secrets\client_secret_*.json" (
-    if not exist "dist\secrets" mkdir "dist\secrets"
-    copy /y "secrets\client_secret_*.json" "dist\secrets\" >nul
-    echo   Copied client_secret to dist\secrets\
-) else (
-    echo   WARNING: no secrets\client_secret_*.json found -- YouTube upload will not work
-)
+echo Preparing empty secrets\ folder next to transcriber.exe...
+REM We do NOT bundle client_secret_*.json -- this is an open-source build.
+REM The app detects the missing file and guides the user through setup
+REM (see docs\youtube-setup.md). If YOU want to test YouTube upload from
+REM this dev build, drop your own client_secret_*.json into dist\secrets\.
+if not exist "dist\secrets" mkdir "dist\secrets"
 
 echo.
 echo ============================================
@@ -107,11 +105,10 @@ echo.
 echo To use it, you'll need ffmpeg:
 echo   winget install ffmpeg
 echo.
-echo Distribution folder contents:
-echo   dist\transcriber.exe
-echo   dist\secrets\client_secret_*.json    (YouTube OAuth)
+echo For YouTube upload testing, drop your own Google OAuth client into:
+echo   dist\secrets\client_secret_*.json
+echo   (see docs\youtube-setup.md for how to get one)
 echo.
-echo Share the dist\ folder contents with your friend.
-echo On first launch they click "Sign in to YouTube".
+echo For a shippable release run release.bat instead of build.bat.
 echo.
 pause
