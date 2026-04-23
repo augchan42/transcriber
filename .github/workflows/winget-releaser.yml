@@ -27,8 +27,6 @@ on:
 
 jobs:
   submit:
-    # Remove `if: false` once WINGET_TOKEN is configured.
-    if: false
     runs-on: windows-latest
     steps:
       - name: Resolve tag

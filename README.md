@@ -6,21 +6,27 @@ Turn any video into subtitles. Works offline, no internet needed after setup.
 
 ## Quick Start (for non-technical users)
 
-You need two things:
-
-### 1. Install ffmpeg (one time)
+### 1. Install the app and ffmpeg (one time)
 
 Open **Command Prompt** and paste:
 
 ```
 winget install ffmpeg
+winget install Augchan42.Transcriber
 ```
 
 Restart Command Prompt after installing.
 
+> Prefer a plain zip? Grab **TranscriberPortable.zip** from the
+> [latest release](https://github.com/augchan42/transcriber/releases/latest),
+> unzip anywhere, and skip to step 2 — you still need `winget install ffmpeg`.
+
 ### 2. Run the transcriber
 
-Double-click **transcriber.exe**. A window opens:
+- **Installed via winget:** open Command Prompt and type `transcriber`, then press Enter.
+- **Portable zip:** double-click **transcriber.exe** inside the unzipped folder.
+
+A window opens:
 
 1. Click **Browse** and pick your video file
 2. Choose your language (use **Cantonese/Chinese (zh)** for Cantonese)

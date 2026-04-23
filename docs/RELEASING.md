@@ -2,6 +2,13 @@
 
 End-to-end checklist for cutting a new version and getting it into winget.
 
+> **Status:** the first release, **v2.0.0**, was merged into
+> `microsoft/winget-pkgs` on **2026-04-23**
+> ([PR #363712](https://github.com/microsoft/winget-pkgs/pull/363712)).
+> The manual flow below has been validated end-to-end; from v2.0.1 onward
+> you can optionally flip on the automated submission path (see
+> [Future work](#future-work-automated-submissions)).
+
 ## One-time setup
 
 Before your first release (v2.0.0):
@@ -144,8 +151,9 @@ within ~30 minutes as the source index refreshes.
 ## Future work: automated submissions
 
 The repo ships with `.github/workflows/winget-releaser.yml`, currently
-disabled via `if: false`. To enable automated winget PRs on every
-GitHub release:
+disabled via `if: false`. Now that v2.0.0 has been merged manually and
+the package exists in `microsoft/winget-pkgs`, subsequent versions are
+good candidates for automation. To enable it:
 
 1. Generate a GitHub PAT:
    - Classic: `public_repo` scope
@@ -156,10 +164,6 @@ GitHub release:
 4. Next release: publish via `scripts\publish-release.ps1` and the
    workflow opens the winget PR automatically — you can skip steps 4 & 5
    of the manual checklist
-
-The first release (v2.0.0) should still be submitted manually so you can
-see the review flow and confirm the manifests are correct before handing
-it off to automation.
 
 ---
 
